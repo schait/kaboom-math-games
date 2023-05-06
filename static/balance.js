@@ -34,14 +34,16 @@ let score = 0;
 
 scene("game", () => {
 
+    let solution = Math.floor(Math.random() * 13) - 6;
     let leftSide = [];
     let rightSide = [];
-    let solution = Math.floor(Math.random() * 13) - 6;
-    let pointer = false;
     let objectsToAdd = [];
+    let objectsToRemove = new Set();
+    let pointer = false;
     let showScaleBox = false;
+    let removeMode = false;
 
-    // scale and fulcrum
+    // scale
     add([
         rect(SCALE_WIDTH, SCALE_HEIGHT),
         outline(4),
@@ -52,20 +54,22 @@ scene("game", () => {
         color(127, 200, 255),
     ]);
 
+    // box around scale (when adding weights)
     let scaleBox = add([
         rect(SCALE_WIDTH, WEIGHT_HEIGHT + SCALE_HEIGHT + 10),
         pos(SCALE_LEFT_EDGE, SCALE_Y),
         origin("botleft"),
-        //outline(4, RED),
         area(),
         solid(),
         opacity(0)
     ])
 
-    // buttons
+    /** BUTTONS */
+
+    // Second row buttons: Divide, Remove, Combine
     let secondRowButtons = [];
     let buttonColors = [color(0, 255, 204), color(255, 102, 153), color(153, 153, 255)];
-    let texts = ["DIVIDE\nBOTH SIDES", "REMOVE\nOBJECTS", "SIMPLIFY\n"]
+    let texts = ["DIVIDE\nBOTH SIDES", "REMOVE\nOBJECTS", "COMBINE\nOBJECTS"]
     let buttonPos = [125, 325, 450];
     for (let i=0; i < 3; i++) {
         secondRowButtons.push(add([
@@ -87,6 +91,7 @@ scene("game", () => {
         origin("center"),
     ])
 
+    // Buttons to add objects
     let firstRowButtons = [];
     let buttonSprites = ["rectangle", "balloon", "pos_unknown", "neg_unknown"];
     texts = ["+", "-", "?", "-?"]
@@ -110,28 +115,124 @@ scene("game", () => {
     }
 
     const [addWeightButton, addBalloonButton, addXButton, addNegXButton] = firstRowButtons;
-    const [divideButton, removeButton, simplifyButton] = secondRowButtons;
+    const [divideButton, removeButton, combineButton] = secondRowButtons;
+
+    // Confirm Remove text and button (initially hidden)
+    let confirmRemoveText = add([
+        text("Select weights to remove, then click OK.", {size: 24, transform: () => ({color: BLACK})}),
+        pos(50, 225),
+        origin("left"),
+        opacity(0)
+    ]);
+
+    let confirmRemoveButton = add([
+        rect(160, 100),
+        pos(650, 223),
+        origin("left"),
+        area(),
+        solid(),
+        text("  OK  ", {size: 24, transform: () => ({color: BLACK})}),
+        opacity(0),
+        "confirmRemoveButton"
+    ]);
+
+    /** HOVER LOGIC */
 
     onHover("button", (c) => {
         pointer = true;
     })
 
+    onHover("weight", (c) => {
+        if (removeMode) {
+            pointer = true;  // in remove mode, clicking a weight marks it for removal
+        }
+    })
+
+    onHover("confirmRemoveButton", (c) => {
+        if (removeMode) {
+            pointer = true;  // button is only visible in remove mode
+        }
+    })
+
+    /**  REMOVE OBJECTS LOGIC  */ 
+
+    removeButton.onClick(() => {
+        // Activate Remove Mode
+        removeMode = !removeMode;
+        // Show Confirm Remove text and button
+        confirmRemoveText.opacity = 1 - confirmRemoveText.opacity;
+        confirmRemoveButton.opacity = 1 - confirmRemoveButton.opacity;
+        confirmRemoveButton.outline = removeMode ? {"color": BLACK, "width": 2} : null;
+
+        // Destroy any objects to add
+        for (const obj of objectsToAdd) {
+            destroy(obj);
+        }
+        objectsToAdd = [];
+    })
+
+    confirmRemoveButton.onClick(() => {
+        // Confirm Remove button is only visible in remove mode, so do nothing if removeMode == false
+        if (removeMode) {
+            for (const obj of objectsToRemove) {
+                // If obj is on left side, remove it from that list
+                let lIndex = leftSide.indexOf(obj);
+                if (lIndex > -1) {
+                    leftSide.splice(lIndex, 1);
+                }
+                else {
+                    // If obj is on right side, remove it from that list
+                    let rIndex = rightSide.indexOf(obj);
+                    if (rIndex > -1) {
+                        rightSide.splice(rIndex, 1);
+                    }
+                }
+                destroy(obj);
+            }
+            rearrangeWeights();
+            removeMode = false;
+        }
+    })
+
+    onClick("weight", (w) => {
+        // In Remove Mode, clicking a weight should add it to objectsToRemove
+        // (or if it's there already, remove it)
+        if (removeMode) {
+            if (objectsToRemove.has(w)) {
+                objectsToRemove.delete(w);
+            }
+            else {
+                objectsToRemove.add(w);
+            }
+            console.log(objectsToRemove);
+        }
+    })
+
+    /** ADD OBJECTS LOGIC */
+
     addXButton.onClick(() => {
         for (const obj of objectsToAdd) {
             destroy(obj);
         }
+        removeMode = false;
         const mouseY = mousePos().y;
+        // Add two objectsToAdd that will follow the mouse pointer
+        // Set "newObj" property to "left" and "right"
         objectsToAdd = [
             createUnknown(true, SCALE_LEFT_EDGE + SCALE_WIDTH/4, mouseY, "left"),
             createUnknown(true, FULCRUM_X + SCALE_WIDTH/4, mouseY, "right")
         ];
+        
     })
 
     addNegXButton.onClick(() => {
         for (const obj of objectsToAdd) {
             destroy(obj);
         }
+        removeMode = false;
         const mouseY = mousePos().y;
+        // Add two objectsToAdd that will follow the mouse pointer
+        // Set "newObj" property to "left" and "right"
         objectsToAdd = [
             createUnknown(false, SCALE_LEFT_EDGE + SCALE_WIDTH/4, mouseY, "left"),
             createUnknown(false, FULCRUM_X + SCALE_WIDTH/4, mouseY, "right")
@@ -142,12 +243,15 @@ scene("game", () => {
         for (const obj of objectsToAdd) {
             destroy(obj);
         }
+        removeMode = false;
         const value = Number(prompt("Choose a value from 1 to 9"));
         if (isNaN(value) || value < 1 || value > 9) {
             alert("Invalid value!")
         }
         else {
             const mouseY = mousePos().y;
+            // Add two objectsToAdd that will follow the mouse pointer
+            // Set "newObj" property to "left" and "right"
             objectsToAdd = [
                 createWeight(value, SCALE_LEFT_EDGE + SCALE_WIDTH/4, mouseY, "left"),
                 createWeight(value, FULCRUM_X + SCALE_WIDTH/4, mouseY, "right")
@@ -159,12 +263,15 @@ scene("game", () => {
         for (const obj of objectsToAdd) {
             destroy(obj);
         }
+        removeMode = false;
         const value = Number(prompt("Choose a value from -1 to -9"));
         if (isNaN(value) || value > -1 || value < -9) {
             alert("Invalid value!")
         }
         else {
             const mouseY = mousePos().y;
+            // Add two objectsToAdd that will follow the mouse pointer
+            // Set "newObj" property to "left" and "right"
             objectsToAdd = [
                 createWeight(value, SCALE_LEFT_EDGE + SCALE_WIDTH/4, mouseY, "left"),
                 createWeight(value, FULCRUM_X + SCALE_WIDTH/4, mouseY, "right")
@@ -173,14 +280,20 @@ scene("game", () => {
     })
 
     onUpdate("weight", (obj) => {
+        // If "newObj" property is false (default), weights are fixed on the scale.
+        // If it is "left" or "right", update weight position to follow the mouse pointer.
         if (obj.newObj) {
             const mouse_pos = mousePos();
             obj.pos.y = mouse_pos.y;
+
+            // Get mouse x position (but if mouse x is outside scale, use edge of scale)
             const posOnScale = Math.max(
                 SCALE_LEFT_EDGE,
                 Math.min(mouse_pos.x, SCALE_RIGHT_EDGE - WEIGHT_WIDTH))
+
             if (obj.newObj === 'left') {
                 if (mouse_pos.y < 150) {
+                    // don't follow the pointer if y < 150 so that buttons don't get covered up
                     obj.pos.x = SCALE_LEFT_EDGE + SCALE_WIDTH/4
                 }
                 else if (posOnScale < FULCRUM_X) {
@@ -192,6 +305,7 @@ scene("game", () => {
             }
             else {
                 if (mouse_pos.y < 150) {
+                    // don't follow the pointer if y < 150 so that buttons don't get covered up
                     obj.pos.x = FULCRUM_X + SCALE_WIDTH/4;
                 }
                 else if (posOnScale > FULCRUM_X) {
@@ -202,35 +316,43 @@ scene("game", () => {
                 }
             }
             if (obj.pos.y >= SCALE_Y - (WEIGHT_HEIGHT + SCALE_HEIGHT + 10) && obj.pos.y <= SCALE_Y) {
+                // mouse is over the scale, so show scale box and enable clicking it to add the weights
                 showScaleBox = true;
                 pointer = true;
             }
         }
     })
 
+    // If objectsToAdd is not empty, clicking the scale box adds weights to the scale.
     scaleBox.onClick(() => {
-        if (objectsToAdd) {
+        if (objectsToAdd.length > 0) {
+            // Insert the new left weight in the leftSide list, at index based on its x position
             let i = 0;
             while (leftSide[i] && leftSide[i].pos.x < objectsToAdd[0].pos.x) {
                 i++;
             }
             leftSide.splice(i, 0, objectsToAdd[0]);
-            console.log("Inserting on left side at index", i)
+            console.log("Inserting on left side at index", i);
             console.log(leftSide.map(o => o.value))
+
+            // Insert the new left weight in the leftSide list, at index based on its x position
             i = 0;
             while (rightSide[i] && rightSide[i].pos.x < objectsToAdd[1].pos.x) {
                 i++;
             }
             rightSide.splice(i, 0, objectsToAdd[1]);
-            console.log("Inserting on right side at index", i)
-            console.log(rightSide.map(o => o.value))
+            console.log("Inserting on right side at index", i);
+            console.log(rightSide.map(o => o.value));
+
+            // Set y value and set newObj = false to fix weights on scale
             objectsToAdd[0].pos.y = DEFAULT_Y;
             objectsToAdd[0].newObj = false;
             objectsToAdd[1].pos.y = DEFAULT_Y;
             objectsToAdd[1].newObj = false;
             objectsToAdd = [];
+
+            rearrangeWeights();  // space out weights more evenly
         }
-        rearrangeWeights();
     })
 
     onDraw(() => {
@@ -252,6 +374,7 @@ scene("game", () => {
         }
         pointer = false;
 
+        // scale box
         if (showScaleBox) {
             scaleBox.outline = {"color": RED, "width": 4};
         }
@@ -259,9 +382,35 @@ scene("game", () => {
             scaleBox.outline = null;
         }
         showScaleBox = false;
+
+        if (!removeMode) {
+            // disable/hide remove mode buttons and text
+            objectsToRemove.clear();
+            confirmRemoveText.opacity = 0;
+            confirmRemoveButton.opacity = 0;
+            confirmRemoveButton.outline = null;
+        }
+
+        // pink X to indicate all weights to remove
+        for (let w of objectsToRemove) {
+            drawLine({
+                p1: vec2(w.pos.x - WEIGHT_WIDTH/2, w.pos.y - WEIGHT_HEIGHT/2),
+                p2: vec2(w.pos.x + WEIGHT_WIDTH/2, w.pos.y + WEIGHT_HEIGHT/2),
+                width: 3,
+                color: rgb(255, 0, 255),
+            })
+            drawLine({
+                p1: vec2(w.pos.x + WEIGHT_WIDTH/2, w.pos.y - WEIGHT_HEIGHT/2),
+                p2: vec2(w.pos.x - WEIGHT_WIDTH/2, w.pos.y + WEIGHT_HEIGHT/2),
+                width: 3,
+                color: rgb(255, 0, 255),
+            })
+        }
     });
 
-    // WEIGHTS / UNKNOWNS
+    /** WEIGHTS & UNKNOWNS */
+    // newObj property is false by default
+    // but "left" or "right" for objectsToAdd before they are added to scale
 
     function createUnknown(isPosUnknown, xPos=100, yPos=DEFAULT_Y, newObj=false) {
         let arr = [
@@ -292,6 +441,7 @@ scene("game", () => {
             solid(),
             area(),
             "weight",
+            "knownWeight",
             {
               value: value,
               isUnknown: false,
@@ -301,14 +451,17 @@ scene("game", () => {
         return add(arr);
     }
 
+    // Rearrange weights for more even spacing. Also check if scale is still balanced!
     function rearrangeWeights() {
         let leftUnknowns = leftSide.filter(w => w.isUnknown);
         let leftWeights = leftSide.filter(w => !w.isUnknown);
         let rightUnknowns = rightSide.filter(w => w.isUnknown);
         let rightWeights = rightSide.filter(w => !w.isUnknown);
-        let x_coord = SCALE_LEFT_EDGE + WEIGHT_WIDTH / 2;
         let leftSpacing = leftSide.length < 5 ? 20 : 5;
         let rightSpacing = rightSide.length < 5 ? 20 : 5;
+        let x_coord = SCALE_LEFT_EDGE + WEIGHT_WIDTH / 2;
+
+        // Arrange objects on left side, unknowns first
         for (let u of leftUnknowns) {
             u.pos.x = x_coord;
             x_coord += (WEIGHT_WIDTH + leftSpacing);
@@ -318,6 +471,10 @@ scene("game", () => {
             w.pos.x = x_coord;
             x_coord += (WEIGHT_WIDTH + leftSpacing);
         }
+
+        // Arrange objects on right side
+        // Start from the edge, known weights first, and work toward the center
+        // Because we're going right to left we need to reverse the lists
         x_coord = SCALE_RIGHT_EDGE - WEIGHT_WIDTH / 2;
         for (let w of rightWeights.toReversed()) {
             w.pos.x = x_coord;
@@ -330,17 +487,20 @@ scene("game", () => {
         }
     }
 
-    // EQUATION LOGIC
+    /** EQUATION LOGIC */ 
 
     function randomInRange(minVal, maxVal) {
         return Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
     }
 
+    // Create weights for the equation and add them to leftSide and rightSide lists
     function createWeightsForEquation(mainSide, otherSide, unknown, coeff, xOffset) {
+        // unknowns on main side
         for (let i = 0; i < coeff + xOffset; i++) {
             mainSide.push(createUnknown(unknown > 0, 50 + i*50));
         }
         
+        // unknowns on other side
         if (xOffset < 0) {
             for (let i=0; i > xOffset; i--) {
                 otherSide.push(createUnknown(unknown < 0, 500 + i*50));
@@ -351,6 +511,9 @@ scene("game", () => {
                 otherSide.push(createUnknown(unknown > 0, 500 + i*50));
             }
         }
+
+        // Generate a pair of addends (one on each side) 
+        // that will make the equation true given the solution.
         const tmp = (unknown < 0) ? - solution*coeff : solution*coeff;
         let addend = 0;
         while (addend == 0 || tmp + addend == 0) {
@@ -365,6 +528,8 @@ scene("game", () => {
         otherSide.push(createWeight(tmp + addend, 750));
     }
 
+    // Generate a randomized algebra equation
+    // leftSide and rightSide lists are modified
     function generateEquation(leftSide, rightSide) {
 
         const negXEnabled = true;
