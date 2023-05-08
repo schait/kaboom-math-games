@@ -42,13 +42,14 @@ scene("game", () => {
     let pointer = false;
     let showScaleBox = false;
     let removeMode = false;
+    let balanced = 0; // 1 for right side heavier, -1 for left side heavier
 
     // scale
-    add([
+    let balanceScale = add([
         rect(SCALE_WIDTH, SCALE_HEIGHT),
         outline(4),
-        pos(SCALE_LEFT_EDGE, SCALE_Y),
-        origin("botleft"),
+        pos(FULCRUM_X, SCALE_Y),
+        origin("bot"),
         area(),
         solid(),
         color(127, 200, 255),
@@ -63,6 +64,11 @@ scene("game", () => {
         solid(),
         opacity(0)
     ])
+
+    function sumWeightsOnSide(side) {
+        const values = side.map(o => o.value)
+        return values.reduce((a, b) => a + b, 0)
+    }
 
     /** BUTTONS */
 
@@ -174,22 +180,40 @@ scene("game", () => {
     confirmRemoveButton.onClick(() => {
         // Confirm Remove button is only visible in remove mode, so do nothing if removeMode == false
         if (removeMode) {
+            // Copy left side and right side, in case scale becomes unbalance and  we have to reset 
+            let leftCopy = [...leftSide];
+            let rightCopy = [...rightSide];
             for (const obj of objectsToRemove) {
                 // If obj is on left side, remove it from that list
-                let lIndex = leftSide.indexOf(obj);
+                let lIndex = leftCopy.indexOf(obj);
                 if (lIndex > -1) {
-                    leftSide.splice(lIndex, 1);
+                    leftCopy.splice(lIndex, 1);
                 }
                 else {
                     // If obj is on right side, remove it from that list
-                    let rIndex = rightSide.indexOf(obj);
+                    let rIndex = rightCopy.indexOf(obj);
                     if (rIndex > -1) {
-                        rightSide.splice(rIndex, 1);
+                        rightCopy.splice(rIndex, 1);
                     }
                 }
-                destroy(obj);
             }
-            rearrangeWeights();
+
+            let sumLeft = sumWeightsOnSide(leftCopy);
+            let sumRight = sumWeightsOnSide(rightCopy);
+            if (sumLeft === sumRight) {
+                for (const obj of objectsToRemove) {
+                    destroy(obj);
+                }
+                leftSide = leftCopy;
+                rightSide = rightCopy;
+                rearrangeWeights();
+            }
+            else if (sumRight > sumLeft) {
+                balanced = 1;
+            }
+            else {
+                balanced = -1;
+            }
             removeMode = false;
         }
     })
@@ -355,6 +379,28 @@ scene("game", () => {
         }
     })
 
+    onUpdate(() => {
+        if (balanceScale.angle) {
+            alert("Scale is no longer balanced!\n" + 
+                "You can only remove objects from one side of the scale if their weights total 0,\n" +
+                "or if you remove an equal amount of weight from the other side.\n" +
+                "Please try again!")
+            for (const obj of objectsToRemove) {
+                obj.opacity = 1;  // show objects to remove again
+            }
+            // reset scale and objectsToRemove
+            balanced = 0;
+            balanceScale.angle = 0;
+            objectsToRemove.clear();
+        }
+        else if (balanced != 0) {
+            balanceScale.angle = balanced > 0 ? 15 : -15;
+            for (const obj of objectsToRemove) {
+                obj.opacity = 0;  // temporarily hide objects to remove
+            }
+        }
+    })
+
     onDraw(() => {
         // fulcrum
         drawTriangle({
@@ -385,7 +431,10 @@ scene("game", () => {
 
         if (!removeMode) {
             // disable/hide remove mode buttons and text
-            objectsToRemove.clear();
+            if (balanced === 0) {
+                // only clear these if balanced (if not, we need to put them back)
+                objectsToRemove.clear();
+            }
             confirmRemoveText.opacity = 0;
             confirmRemoveButton.opacity = 0;
             confirmRemoveButton.outline = null;
@@ -451,7 +500,7 @@ scene("game", () => {
         return add(arr);
     }
 
-    // Rearrange weights for more even spacing. Also check if scale is still balanced!
+    // Rearrange weights for more even spacing.
     function rearrangeWeights() {
         let leftUnknowns = leftSide.filter(w => w.isUnknown);
         let leftWeights = leftSide.filter(w => !w.isUnknown);
