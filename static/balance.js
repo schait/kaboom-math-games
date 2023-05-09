@@ -39,9 +39,11 @@ scene("game", () => {
     let rightSide = [];
     let objectsToAdd = [];
     let objectsToRemove = new Set();
+    let objectsToCombine = new Set();
     let pointer = false;
     let showScaleBox = false;
     let removeMode = false;
+    let combineMode = false;
     let balanced = 0; // 1 for right side heavier, -1 for left side heavier
 
     // scale
@@ -142,14 +144,36 @@ scene("game", () => {
         "confirmRemoveButton"
     ]);
 
-    /** HOVER LOGIC */
+    // Confirm Combine text and button (initially hidden)
+
+    let confirmCombineText = add([
+        text(
+            "Select weights to combine, then click OK.\nAll weights must be on one side. Cannot combine unknowns.", 
+            {size: 24, transform: () => ({color: BLACK})}),
+        pos(50, 225),
+        origin("left"),
+        opacity(0)
+    ]);
+
+    let confirmCombineButton = add([
+        rect(160, 100),
+        pos(655, 213),
+        origin("left"),
+        area(),
+        solid(),
+        text("  OK  ", {size: 24, transform: () => ({color: BLACK})}),
+        opacity(0),
+        "confirmCombineButton"
+    ]);
+
+    /** HOVER HANDLING */
 
     onHover("button", (c) => {
         pointer = true;
     })
 
     onHover("weight", (c) => {
-        if (removeMode) {
+        if (removeMode || combineMode) {
             pointer = true;  // in remove mode, clicking a weight marks it for removal
         }
     })
@@ -160,11 +184,18 @@ scene("game", () => {
         }
     })
 
-    /**  REMOVE OBJECTS LOGIC  */ 
+    onHover("confirmCombineButton", (c) => {
+        if (combineMode) {
+            pointer = true;  // button is only visible in combine mode
+        }
+    })
+
+    /**  REMOVE OBJECTS HANDLING  */ 
 
     removeButton.onClick(() => {
         // Activate Remove Mode
         removeMode = !removeMode;
+        combineMode = false;
         // Show Confirm Remove text and button
         confirmRemoveText.opacity = 1 - confirmRemoveText.opacity;
         confirmRemoveButton.opacity = 1 - confirmRemoveButton.opacity;
@@ -180,17 +211,17 @@ scene("game", () => {
     confirmRemoveButton.onClick(() => {
         // Confirm Remove button is only visible in remove mode, so do nothing if removeMode == false
         if (removeMode) {
-            // Copy left side and right side, in case scale becomes unbalance and  we have to reset 
+            // Copy left side and right side, in case scale becomes unbalanced and we have to reset 
             let leftCopy = [...leftSide];
             let rightCopy = [...rightSide];
             for (const obj of objectsToRemove) {
-                // If obj is on left side, remove it from that list
+                // If obj is on left side, remove it from left copy
                 let lIndex = leftCopy.indexOf(obj);
                 if (lIndex > -1) {
                     leftCopy.splice(lIndex, 1);
                 }
                 else {
-                    // If obj is on right side, remove it from that list
+                    // If obj is on right side, remove it from right copy
                     let rIndex = rightCopy.indexOf(obj);
                     if (rIndex > -1) {
                         rightCopy.splice(rIndex, 1);
@@ -201,6 +232,7 @@ scene("game", () => {
             let sumLeft = sumWeightsOnSide(leftCopy);
             let sumRight = sumWeightsOnSide(rightCopy);
             if (sumLeft === sumRight) {
+                // balanced, so destroy the objectsToRemove and set each side to the copy with weights removed
                 for (const obj of objectsToRemove) {
                     destroy(obj);
                 }
@@ -230,15 +262,102 @@ scene("game", () => {
             }
             console.log(objectsToRemove);
         }
+        else if (combineMode) {
+            if (objectsToCombine.has(w)) {
+                objectsToCombine.delete(w);
+            }
+            else {
+                objectsToCombine.add(w);
+            }
+            console.log(objectsToCombine);
+        }
     })
 
-    /** ADD OBJECTS LOGIC */
+    /** COMBINE OBJECTS HANDLING */
+
+    combineButton.onClick(() => {
+        // Activate Combine Mode
+        combineMode = !combineMode;
+        removeMode = false;
+        // Show Confirm Combine text and button
+        confirmCombineText.opacity = 1 - confirmCombineText.opacity;
+        confirmCombineButton.opacity = 1 - confirmCombineButton.opacity;
+        confirmCombineButton.outline = combineMode ? {"color": BLACK, "width": 2} : null;
+
+        // Destroy any objects to add
+        for (const obj of objectsToAdd) {
+            destroy(obj);
+        }
+        objectsToAdd = [];
+    })
+
+    confirmCombineButton.onClick(() => {
+        // Confirm Combine button is only visible in combine mode, so do nothing if combineMode == false
+        if (combineMode) {
+            // Copy left side and right side, in case scale becomes unbalanced and we have to reset 
+            let leftCopy = [...leftSide];
+            let rightCopy = [...rightSide];
+            let allOnLeft = true;
+            let allOnRight = true;
+            let totalValue = 0;
+
+            for (const obj of objectsToCombine) {
+                if (obj.isUnknown) {
+                    alert("Cannot combine unknowns!");
+                    combineMode = false;
+                    return
+                }
+                let lIndex = leftCopy.indexOf(obj);
+                if (lIndex > -1) {
+                    allOnRight = false;
+                    leftCopy.splice(lIndex, 1);
+                }
+                else {
+                    let rIndex = rightCopy.indexOf(obj);
+                    if (rIndex > -1) {
+                        allOnLeft = false;
+                        rightCopy.splice(rIndex, 1);
+                    }
+                }
+                totalValue += obj.value;
+                console.log("Obj value is", obj.value);
+                console.log("Total value is", totalValue);
+            }
+            if (allOnLeft) {
+                leftSide = leftCopy;
+                for (const obj of objectsToCombine) {
+                    destroy(obj);
+                }
+                if (totalValue != 0) {
+                    leftSide.push(createWeight(totalValue))
+                }
+                rearrangeWeights();
+            }
+            else if (allOnRight) {
+                rightSide = rightCopy;
+                for (const obj of objectsToCombine) {
+                    destroy(obj);
+                }
+                if (totalValue != 0) {
+                    rightSide.push(createWeight(totalValue))
+                }
+                rearrangeWeights();
+            }
+            else {
+                alert("Cannot combine. Weights must all be on one side.")
+            }
+            combineMode = false;
+        }
+    })
+
+    /** ADD OBJECTS HANDLING */
 
     addXButton.onClick(() => {
         for (const obj of objectsToAdd) {
             destroy(obj);
         }
         removeMode = false;
+        combineMode = false;
         const mouseY = mousePos().y;
         // Add two objectsToAdd that will follow the mouse pointer
         // Set "newObj" property to "left" and "right"
@@ -254,6 +373,7 @@ scene("game", () => {
             destroy(obj);
         }
         removeMode = false;
+        combineMode = false;
         const mouseY = mousePos().y;
         // Add two objectsToAdd that will follow the mouse pointer
         // Set "newObj" property to "left" and "right"
@@ -268,6 +388,7 @@ scene("game", () => {
             destroy(obj);
         }
         removeMode = false;
+        combineMode = false;
         const value = Number(prompt("Choose a value from 1 to 9"));
         if (isNaN(value) || value < 1 || value > 9) {
             alert("Invalid value!")
@@ -288,6 +409,7 @@ scene("game", () => {
             destroy(obj);
         }
         removeMode = false;
+        combineMode = false;
         const value = Number(prompt("Choose a value from -1 to -9"));
         if (isNaN(value) || value > -1 || value < -9) {
             alert("Invalid value!")
@@ -439,20 +561,43 @@ scene("game", () => {
             confirmRemoveButton.opacity = 0;
             confirmRemoveButton.outline = null;
         }
+        if (!combineMode) {
+            // disable/hide combine mode buttons and text
+            objectsToCombine.clear();
+            confirmCombineText.opacity = 0;
+            confirmCombineButton.opacity = 0;
+            confirmCombineButton.outline = null;
+        }
 
         // pink X to indicate all weights to remove
         for (let w of objectsToRemove) {
             drawLine({
                 p1: vec2(w.pos.x - WEIGHT_WIDTH/2, w.pos.y - WEIGHT_HEIGHT/2),
                 p2: vec2(w.pos.x + WEIGHT_WIDTH/2, w.pos.y + WEIGHT_HEIGHT/2),
-                width: 3,
+                width: 5,
                 color: rgb(255, 0, 255),
             })
             drawLine({
                 p1: vec2(w.pos.x + WEIGHT_WIDTH/2, w.pos.y - WEIGHT_HEIGHT/2),
                 p2: vec2(w.pos.x - WEIGHT_WIDTH/2, w.pos.y + WEIGHT_HEIGHT/2),
-                width: 3,
+                width: 5,
                 color: rgb(255, 0, 255),
+            })
+        }
+
+        // blue check to indicate all weights to remove
+        for (let w of objectsToCombine) {
+            drawLine({
+                p1: vec2(w.pos.x + WEIGHT_WIDTH/2, w.pos.y - WEIGHT_HEIGHT/2),
+                p2: vec2(w.pos.x, w.pos.y + WEIGHT_HEIGHT/2),
+                width: 5,
+                color: rgb(80, 160, 255),
+            })
+            drawLine({
+                p1: vec2(w.pos.x - WEIGHT_WIDTH/2, w.pos.y),
+                p2: vec2(w.pos.x, w.pos.y + WEIGHT_HEIGHT/2),
+                width: 5,
+                color: rgb(80, 160, 255),
             })
         }
     });
