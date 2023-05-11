@@ -20,7 +20,6 @@ loadSprite("neg_unknown", "/static/sprites/neg_unknown.png");
 loadSprite("rectangle", "/static/sprites/rectangle2.png");
 loadSprite("balloon", "/static/sprites/red_balloon.png");
 
-let scaleStatus = 0;
 let score = 0;
 
 // const alertBox = document.createElement("div");
@@ -72,18 +71,97 @@ scene("game", () => {
         return values.reduce((a, b) => a + b, 0)
     }
 
+    /** WEIGHTS & UNKNOWNS */
+    // newObj property is false by default
+    // but "left" or "right" for objectsToAdd before they are added to scale
+
+    function createUnknown(isPosUnknown, xPos=100, yPos=DEFAULT_Y, newObj=false) {
+        let arr = [
+            sprite(isPosUnknown ? "pos_unknown" : "neg_unknown"),
+            pos(xPos, yPos),
+            origin("center"),
+            scale(1.0667),
+            text(isPosUnknown ? "\n ?\n" : "\n -?\n", {size: 32}),
+            solid(),
+            area(),
+            "weight",
+            "unknown",
+            {
+              value: isPosUnknown ? solution : -solution,
+              isUnknown: true,
+              newObj: newObj
+            }
+        ]
+        return add(arr);
+    }
+
+    function createWeight(value, xPos=100, yPos=DEFAULT_Y, newObj=false) {
+        let arr = [
+            sprite(value >= 0 ? "rectangle" : "balloon"),
+            pos(xPos, yPos),
+            origin("center"),
+            text(`\n ${value}\n`, {size: 32}),
+            solid(),
+            area(),
+            "weight",
+            "knownWeight",
+            {
+              value: value,
+              isUnknown: false,
+              newObj: newObj
+            }
+        ];
+        return add(arr);
+    }
+
+    // Rearrange weights for more even spacing.
+    function rearrangeWeights() {
+        let leftUnknowns = leftSide.filter(w => w.isUnknown);
+        let leftWeights = leftSide.filter(w => !w.isUnknown);
+        let rightUnknowns = rightSide.filter(w => w.isUnknown);
+        let rightWeights = rightSide.filter(w => !w.isUnknown);
+        let leftSpacing = leftSide.length < 5 ? 20 : 5;
+        let rightSpacing = rightSide.length < 5 ? 20 : 5;
+        let x_coord = SCALE_LEFT_EDGE + WEIGHT_WIDTH / 2;
+
+        // Arrange objects on left side, unknowns first
+        for (let u of leftUnknowns) {
+            u.pos.x = x_coord;
+            x_coord += (WEIGHT_WIDTH + leftSpacing);
+        }
+        x_coord += (leftSpacing * 2);
+        for (let w of leftWeights) {
+            w.pos.x = x_coord;
+            x_coord += (WEIGHT_WIDTH + leftSpacing);
+        }
+
+        // Arrange objects on right side
+        // Start from the edge, known weights first, and work toward the center
+        // Because we're going right to left we need to reverse the lists
+        x_coord = SCALE_RIGHT_EDGE - WEIGHT_WIDTH / 2;
+        for (let w of rightWeights.toReversed()) {
+            w.pos.x = x_coord;
+            x_coord -= (WEIGHT_WIDTH + rightSpacing);
+        }
+        x_coord -= (rightSpacing * 2);
+        for (let u of rightUnknowns.toReversed()) {
+            u.pos.x = x_coord;
+            x_coord -= (WEIGHT_WIDTH + rightSpacing);
+        }
+    }
+
     /** BUTTONS */
 
     // Second row buttons: Divide, Remove, Combine
     let secondRowButtons = [];
-    let buttonColors = [color(0, 255, 204), color(255, 102, 153), color(153, 153, 255)];
-    let texts = ["DIVIDE\nBOTH SIDES", "REMOVE\nOBJECTS", "COMBINE\nOBJECTS"]
-    let buttonPos = [125, 325, 450];
-    for (let i=0; i < 3; i++) {
+    let buttonColors = [color(255, 87, 51), color(255, 102, 153), color(153, 153, 255), color(0, 255, 204)];
+    let texts = ["DIVIDE\nBOTH SIDES", "REMOVE\nOBJECTS", "COMBINE\nOBJECTS", "ENTER\nSOLUTION"]
+    let buttonPos = [125, 325, 450, 675];
+    for (let i=0; i < 4; i++) {
         secondRowButtons.push(add([
             rect(160, 100),
             outline(2),
-            pos(buttonPos[i], 125),
+            pos(buttonPos[i], i == 3 ? 75 : 125),
             origin(i == 2 ? "left" : "center"),
             area(),
             solid(),
@@ -123,7 +201,7 @@ scene("game", () => {
     }
 
     const [addWeightButton, addBalloonButton, addXButton, addNegXButton] = firstRowButtons;
-    const [divideButton, removeButton, combineButton] = secondRowButtons;
+    const [divideButton, removeButton, combineButton, solveButton] = secondRowButtons;
 
     // Confirm Remove text and button (initially hidden)
     let confirmRemoveText = add([
@@ -501,8 +579,109 @@ scene("game", () => {
         }
     })
 
+    /** DIVIDE BOTH SIDES */
+
+    divideButton.onClick(() => {
+        removeMode = false;
+        combineMode = false;
+        for (const obj of objectsToAdd) {
+            destroy(obj);
+        }
+
+        const quotient = Number(prompt("Choose a value from 1 to 6"));
+        if (isNaN(quotient) || quotient < 1 || quotient > 6) {
+            alert("Invalid value!")
+            return
+        }
+        let newLeftSide = [];
+        let toDestroy = [];
+        let newRightSide = [];
+        let leftWeights = leftSide.filter(w => !w.isUnknown);
+        let rightWeights = rightSide.filter(w => !w.isUnknown);
+
+        for (const signifier of ["left", "right"]) {
+            const side = signifier === "left" ? leftSide : rightSide;
+            let posUnknowns = side.filter(w => w.isUnknown && w.value == solution);
+            let negUnknowns = side.filter(w => w.isUnknown && w.value == -solution);
+            let weights = signifier === "left" ? leftWeights : rightWeights;
+            if (posUnknowns.length % quotient !== 0) {
+                alert(`Cannot divide ${len(posUnknowns)} black unknowns on ${signifier} side by ${quotient}.`);
+                return;
+            }
+            if (negUnknowns.length % quotient !== 0) {
+                alert(`Cannot divide ${len(posUnknowns)} white unknowns on ${signifier} side by ${quotient}.`);
+                return;
+            }
+            for (const wt of weights) {
+                if (wt.value % quotient !== 0) {
+                    alert(`Cannot divide ${wt.value} on ${signifier} side by ${quotient}.`);
+                    return;
+                }
+            }
+
+            let newSide = signifier === "left" ? newLeftSide : newRightSide;
+            for (let i = 0; i < posUnknowns.length; i++) {
+                if (i % quotient === 0) {
+                    newSide.push(posUnknowns[i]);
+                }
+                else {
+                    toDestroy.push(posUnknowns[i]);
+                }
+            }
+            for (let i = 0; i < negUnknowns.length; i++) {
+                if (i % quotient === 0) {
+                    newSide.push(negUnknowns[i]);
+                }
+                else {
+                    toDestroy.push(negUnknowns[i]);
+                }
+            }
+        }
+        // Everything is divisible, so actually destroy the objects and do the division
+        for (const wt of leftWeights) {
+            toDestroy.push(wt);
+            newLeftSide.push(createWeight(wt.value / quotient, wt.pos.x, wt.pos.y))
+        }
+        for (const wt of rightWeights) {
+            toDestroy.push(wt);
+            newRightSide.push(createWeight(wt.value / quotient, wt.pos.x, wt.pos.y))
+        }
+        console.log("Ready to divide!");
+        console.log(newLeftSide.map(o => o.value));
+        console.log(newRightSide.map(o => o.value))
+        
+        leftSide = newLeftSide;
+        rightSide = newRightSide;
+        for (const wt of toDestroy) {
+            destroy(wt);
+        }
+        rearrangeWeights();
+    })
+
+    /** SOLUTION */
+
+    solveButton.onClick(() => {
+        const answer = prompt("Enter the value of the BLACK unknown.\n" +
+                        "(If you have a value for the white unknown,\n enter that value with the sign flipped.)")
+        if (answer === "") {
+            return
+        }
+        else if (Number(answer) === solution) {
+            alert("Correct!");
+            score += 100;
+            go("game");
+        }
+        else {
+            alert("Incorrect!");
+            score -= 50;
+            console.log(score);
+        }
+    })
+
     onUpdate(() => {
         if (balanceScale.angle) {
+            score -= 50;
+            console.log(score);
             alert("Scale is no longer balanced!\n" + 
                 "You can only remove objects from one side of the scale if their weights total 0,\n" +
                 "or if you remove an equal amount of weight from the other side.\n" +
@@ -532,6 +711,15 @@ scene("game", () => {
             outline: {width: 2, color: BLACK},
             color: rgb(127, 200, 255),
         })
+
+        // score
+        drawText({
+            text: "Score: " + score,
+            size: 32,
+            color: BLACK,
+            pos: vec2(FULCRUM_X + 200, SCALE_Y + 60),
+            origin: "left"
+          })
 
         // button click
         if (pointer) {
@@ -601,85 +789,6 @@ scene("game", () => {
             })
         }
     });
-
-    /** WEIGHTS & UNKNOWNS */
-    // newObj property is false by default
-    // but "left" or "right" for objectsToAdd before they are added to scale
-
-    function createUnknown(isPosUnknown, xPos=100, yPos=DEFAULT_Y, newObj=false) {
-        let arr = [
-            sprite(isPosUnknown ? "pos_unknown" : "neg_unknown"),
-            pos(xPos, yPos),
-            origin("center"),
-            scale(1.0667),
-            text(isPosUnknown ? "?" : "-?", {size: 32}),
-            solid(),
-            area(),
-            "weight",
-            "unknown",
-            {
-              value: isPosUnknown ? solution : -solution,
-              isUnknown: true,
-              newObj: newObj
-            }
-        ]
-        return add(arr);
-    }
-
-    function createWeight(value, xPos=100, yPos=DEFAULT_Y, newObj=false) {
-        let arr = [
-            sprite(value >= 0 ? "rectangle" : "balloon"),
-            pos(xPos, yPos),
-            origin("center"),
-            text(value, {size: 32}),
-            solid(),
-            area(),
-            "weight",
-            "knownWeight",
-            {
-              value: value,
-              isUnknown: false,
-              newObj: newObj
-            }
-        ];
-        return add(arr);
-    }
-
-    // Rearrange weights for more even spacing.
-    function rearrangeWeights() {
-        let leftUnknowns = leftSide.filter(w => w.isUnknown);
-        let leftWeights = leftSide.filter(w => !w.isUnknown);
-        let rightUnknowns = rightSide.filter(w => w.isUnknown);
-        let rightWeights = rightSide.filter(w => !w.isUnknown);
-        let leftSpacing = leftSide.length < 5 ? 20 : 5;
-        let rightSpacing = rightSide.length < 5 ? 20 : 5;
-        let x_coord = SCALE_LEFT_EDGE + WEIGHT_WIDTH / 2;
-
-        // Arrange objects on left side, unknowns first
-        for (let u of leftUnknowns) {
-            u.pos.x = x_coord;
-            x_coord += (WEIGHT_WIDTH + leftSpacing);
-        }
-        x_coord += (leftSpacing * 2);
-        for (let w of leftWeights) {
-            w.pos.x = x_coord;
-            x_coord += (WEIGHT_WIDTH + leftSpacing);
-        }
-
-        // Arrange objects on right side
-        // Start from the edge, known weights first, and work toward the center
-        // Because we're going right to left we need to reverse the lists
-        x_coord = SCALE_RIGHT_EDGE - WEIGHT_WIDTH / 2;
-        for (let w of rightWeights.toReversed()) {
-            w.pos.x = x_coord;
-            x_coord -= (WEIGHT_WIDTH + rightSpacing);
-        }
-        x_coord -= (rightSpacing * 2);
-        for (let u of rightUnknowns.toReversed()) {
-            u.pos.x = x_coord;
-            x_coord -= (WEIGHT_WIDTH + rightSpacing);
-        }
-    }
 
     /** EQUATION LOGIC */ 
 
