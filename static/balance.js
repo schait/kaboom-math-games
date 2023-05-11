@@ -12,7 +12,7 @@ const UNKNOWN = 127;
 const NEG_UNKNOWN = -127;
 
 // initialize context
-kaboom();
+kaboom({background: [ 255, 255, 180, ]});
 
 // load assets
 loadSprite("pos_unknown", "/static/sprites/unknown.png");
@@ -62,6 +62,20 @@ scene("game", () => {
         solid(),
         opacity(0)
     ])
+
+    let quit = add([
+        rect(150, 100),
+        pos(1090, 65),
+        outline(2),
+        color(153, 153, 153),
+        text(" QUIT ", {size: 32, transform: () => ({color: BLACK})}),
+        origin("center"),
+        area(),
+        solid(),
+        "button"
+    ])
+
+    quit.onClick(() => window.location.href="/")
 
     function sumWeightsOnSide(side) {
         const values = side.map(o => o.value)
@@ -721,7 +735,8 @@ scene("game", () => {
     solveButton.onClick(() => {
         const answer = prompt("Enter the value of the BLACK unknown, x.\n" +
                         "(If you have a value for the white unknown,\n enter that value with the sign flipped.)")
-        if (answer === "") {
+        console.log(answer);
+        if (answer === null || answer === undefined || answer === "") {
             return
         }
         else if (Number(answer) === solution) {

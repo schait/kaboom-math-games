@@ -7,6 +7,12 @@ app = Flask(__name__)
 def show_homepage():
     """Show the application's homepage."""
 
+    return render_template('balance_instructions.html')
+
+@app.route('/balance')
+def balance_game():
+    """BalanceItOut game."""
+
     return render_template('balance.html')
 
 if __name__ == '__main__':
