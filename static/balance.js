@@ -22,14 +22,9 @@ loadSprite("balloon", "/static/sprites/red_balloon.png");
 
 let score = 0;
 
-// const alertBox = document.createElement("div");
-// document.body.appendChild(alertBox);
-// alertBox.style.width = "500px";
-// alertBox.style.height = "250px";
-// alertBox.style.zIndex = 9999;
-// alertBox.style.position = "absolute";
-// alertBox.style.top = "0px";
-// alertBox.style.left = "0px";
+const algebraBox = document.createElement("div");
+document.body.appendChild(algebraBox);
+algebraBox.classList.add("algebra")
 
 scene("game", () => {
 
@@ -83,12 +78,15 @@ scene("game", () => {
             let counts = signifier === "left" ? leftCounts : rightCounts;
             let i = signifier === "left" ? 0 : 1;
             for (const obj of side) {
+                // count should only come into play for unknowns. 
+                // Even if there are two 3's together, it should display as + 3 + 3
                 if (obj.abstractValue === currentValue && 
                     (obj.abstractValue == UNKNOWN || obj.abstractValue == NEG_UNKNOWN)) 
                 {
                     currentCount++;
                 }
                 else {
+                    // new term
                     if (currentValue !== null) {
                         counts.push([currentValue, currentCount])
                     }
@@ -118,13 +116,9 @@ scene("game", () => {
             }
             eqns[i] = eqns[i].trim();
             if (eqns[i].startsWith("+ ")) {
-                eqns[i] = eqns[i].substring(2);
+                eqns[i] = eqns[i].substring(2);  // remove leading "+" if there is one.
             }
         }
-        // console.log(leftCounts);
-        // console.log(rightCounts);
-        // console.log(eqns[0]);
-        // console.log(eqns[1]);
         return `${eqns[0]} = ${eqns[1]}`
     }
 
@@ -207,7 +201,8 @@ scene("game", () => {
             u.pos.x = x_coord;
             x_coord -= (WEIGHT_WIDTH + rightSpacing);
         }
-        console.log(generateAlgExpression())
+        algView = algView + generateAlgExpression() + "<br>";
+        algebraBox.innerHTML = algView;
     }
 
     /** BUTTONS */
@@ -724,7 +719,7 @@ scene("game", () => {
     /** SOLUTION */
 
     solveButton.onClick(() => {
-        const answer = prompt("Enter the value of the BLACK unknown.\n" +
+        const answer = prompt("Enter the value of the BLACK unknown, x.\n" +
                         "(If you have a value for the white unknown,\n enter that value with the sign flipped.)")
         if (answer === "") {
             return
