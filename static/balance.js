@@ -45,6 +45,8 @@ scene("game", () => {
     let combineMode = false;
     let balanced = 0; // 1 for right side heavier, -1 for left side heavier
 
+    let algView = "";
+
     // scale
     let balanceScale = add([
         rect(SCALE_WIDTH, SCALE_HEIGHT),
@@ -71,6 +73,61 @@ scene("game", () => {
         return values.reduce((a, b) => a + b, 0)
     }
 
+    function generateAlgExpression() {
+        let leftCounts = [];
+        let rightCounts = [];
+        let [currentValue, currentCount] = [null, 0];
+        let eqns = ["", ""]
+        for (const signifier of ["left", "right"]) {
+            const side = signifier === "left" ? leftSide : rightSide;
+            let counts = signifier === "left" ? leftCounts : rightCounts;
+            let i = signifier === "left" ? 0 : 1;
+            for (const obj of side) {
+                if (obj.abstractValue === currentValue && 
+                    (obj.abstractValue == UNKNOWN || obj.abstractValue == NEG_UNKNOWN)) 
+                {
+                    currentCount++;
+                }
+                else {
+                    if (currentValue !== null) {
+                        counts.push([currentValue, currentCount])
+                    }
+                    currentValue = obj.abstractValue;
+                    currentCount = 1;
+                }
+            }
+            if (currentValue !== null) {
+                counts.push([currentValue, currentCount])
+            }
+            currentValue = null;
+            currentCount = 0;
+            for (const [value, count] of counts) {
+                if (value === UNKNOWN) {
+                    eqns[i] = eqns[i] + (count === 1 ? "+ x " : `+ ${count}x `);
+                }
+                else if (value === NEG_UNKNOWN) {
+                    eqns[i] = eqns[i] + (count === 1 ? "- x " : `- ${count}x `);
+                }
+                else if (value < 0) {
+                    eqns[i] = eqns[i] + `- ${-value} `;
+                }
+                else {
+                    eqns[i] = eqns[i] + `+ ${value} `;
+                }
+                console.log(eqns[i]);
+            }
+            eqns[i] = eqns[i].trim();
+            if (eqns[i].startsWith("+ ")) {
+                eqns[i] = eqns[i].substring(2);
+            }
+        }
+        // console.log(leftCounts);
+        // console.log(rightCounts);
+        // console.log(eqns[0]);
+        // console.log(eqns[1]);
+        return `${eqns[0]} = ${eqns[1]}`
+    }
+
     /** WEIGHTS & UNKNOWNS */
     // newObj property is false by default
     // but "left" or "right" for objectsToAdd before they are added to scale
@@ -89,7 +146,8 @@ scene("game", () => {
             {
               value: isPosUnknown ? solution : -solution,
               isUnknown: true,
-              newObj: newObj
+              newObj: newObj,
+              abstractValue: isPosUnknown ? UNKNOWN : NEG_UNKNOWN
             }
         ]
         return add(arr);
@@ -108,7 +166,8 @@ scene("game", () => {
             {
               value: value,
               isUnknown: false,
-              newObj: newObj
+              newObj: newObj,
+              abstractValue: value
             }
         ];
         return add(arr);
@@ -148,6 +207,7 @@ scene("game", () => {
             u.pos.x = x_coord;
             x_coord -= (WEIGHT_WIDTH + rightSpacing);
         }
+        console.log(generateAlgExpression())
     }
 
     /** BUTTONS */
@@ -604,6 +664,8 @@ scene("game", () => {
             let posUnknowns = side.filter(w => w.isUnknown && w.value == solution);
             let negUnknowns = side.filter(w => w.isUnknown && w.value == -solution);
             let weights = signifier === "left" ? leftWeights : rightWeights;
+
+            // Make sure everything is divisible by the quotient
             if (posUnknowns.length % quotient !== 0) {
                 alert(`Cannot divide ${len(posUnknowns)} black unknowns on ${signifier} side by ${quotient}.`);
                 return;
@@ -619,6 +681,7 @@ scene("game", () => {
                 }
             }
 
+            // Put together the new leftSide/rightSide and also a list of weights to destroy
             let newSide = signifier === "left" ? newLeftSide : newRightSide;
             for (let i = 0; i < posUnknowns.length; i++) {
                 if (i % quotient === 0) {
