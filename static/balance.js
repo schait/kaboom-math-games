@@ -133,6 +133,12 @@ scene("game", () => {
                 eqns[i] = eqns[i].substring(2);  // remove leading "+" if there is one.
             }
         }
+        if (eqns[0] === "") {
+            eqns[0] = "0"
+        }
+        if (eqns[1] === "") {
+            eqns[1] = "0"
+        }
         return `${eqns[0]} = ${eqns[1]}`
     }
 
