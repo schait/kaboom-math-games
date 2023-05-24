@@ -4,8 +4,14 @@ app = Flask(__name__)
 
 
 @app.route('/')
-def show_homepage():
+def homepage():
     """Show the application's homepage."""
+
+    return render_template("homepage.html")
+
+@app.route('/balance-instructions')
+def balance_instructions():
+    """Instructions for BalanceItOut game."""
 
     return render_template('balance_instructions.html')
 
@@ -15,5 +21,11 @@ def balance_game():
 
     return render_template('balance.html')
 
+@app.route('/blaster')
+def blaster_game():
+    """Equation Blaster game."""
+
+    return render_template('blaster.html')
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(host='0.0.0.0')
