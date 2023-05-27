@@ -2,7 +2,8 @@ const MAX_PLAYER_SPEED = 150;
 const PLAYER_ACCEL = 25;
 const BULLET_SPEED = 300;
 const FIREBALL_SPEED = 600;
-const NUM_ENEMIES = 4;
+const MAX_BOSS_SPEED_Y = 80;
+const TESTING = false;
 
 kaboom({
     background: [ 0, 0, 0, ]
@@ -22,16 +23,39 @@ loadSound("explosion2", "/static/sounds/implosion.wav");
 scene("main", ()=> {
 
     let score = 0;
-    let enemiesKilled = 0;
+    let level = 1;
+    let levelCounter = 0;
+    let numEnemiesKilled = 0;
     let gameOver = false;
-    let enemiesOnScreen = 0;
-    let minibossWall = null;
+    let numEnemiesOnScreen = 0;
+    let bossWall = null;
     let bossMode = false;
-    //let answer = null;
+    let answer = null;
+    let neg_answer = false;
     let bossText = null;
     let numBossesKilled = 0;
-    const COLORS = [color(255, 255, 255), color(127, 127, 127), color(255, 0, 0), color(255, 165, 0), color(255, 255, 0),
-        color(0, 255, 0), color(0, 255, 255), color(0, 0, 255), color(180, 0, 180), color(255, 0, 255)];
+
+    const BULLET_COLORS = {
+        0: [255, 255, 255], // white
+        1: [180, 180, 180], // light gray
+        "-1": [80, 80, 80], // dark gray
+        2: [255, 0, 0], // red
+        "-2": [153, 0, 0], // dark red
+        3: [255, 165, 0],  // orange
+        "-3": [165, 83, 0],  // brown
+        4: [255, 255, 0], // yellow
+        "-4": [180, 127, 0], // gold
+        5: [0, 255, 0],  // lime green
+        "-5": [0, 127, 0],  // dark green
+        6: [0, 255, 255], // cyan
+        "-6": [0, 128, 128],  // teal
+        7: [30, 30, 255],  // blue
+        "-7": [20, 20, 180], // dark blue
+        8: [220, 0, 255], // light purple
+        "-8": [128, 0, 128], // dark purple
+        9: [255, 105, 180], // pink
+        "-9": [180, 0, 100] // dark pink
+    };
   
     onDraw(() => {
       drawText({
@@ -46,6 +70,13 @@ scene("main", ()=> {
         size: 24,
         font: "sink",
         pos: vec2(8),
+      });
+
+      drawText({
+        text: "Level: " + level,
+        size: 24,
+        font: "sink",
+        pos: vec2(250, 5),
       });
 
       drawText({
@@ -67,12 +98,57 @@ scene("main", ()=> {
 
       if (bossMode) {
         drawText({
-            text: "Press the correct number key to shoot!",
-            size: 24,
+            text: "Type the correct answer to select ammo.",
+            size: 20,
             color: YELLOW,
             font: "sink",
-            pos: vec2(200, height() - 100)
+            pos: vec2(200, height() - 150)
           })
+        
+        // Positive number ammo selection
+        for (let i = 0; i < 10; i++) {
+            drawText({
+                text: i,
+                size: 16,
+                font: "sink",
+                pos: vec2(200 + i * 20, height() - 100)
+            })
+            drawRect({
+                width: 8,
+                height: 8,
+                pos: vec2(202 + i * 20, height() - 75),
+                color: Color.fromArray(BULLET_COLORS[i]),
+            })
+        }
+
+        // Negative number ammo selection
+        if (LEVEL_INFO[level]['minSolution'] < 0) {
+            for (let i = 1; i < 10; i++) {
+                drawText({
+                    text: -i,
+                    size: 16,
+                    font: "sink",
+                    pos: vec2(380 + i * 30, height() - 100)
+                })
+                drawRect({
+                    width: 8,
+                    height: 8,
+                    pos: vec2(390 + i * 30, height() - 75),
+                    color: Color.fromArray(BULLET_COLORS[-i]),
+                })
+            }
+        }
+
+        // Box to show currently selected ammo
+        if (answer !== null) {
+            drawRect({
+                width: answer < 0 ? 30 : 20,
+                height: 40,
+                pos: vec2(answer < 0 ? 380 + -answer * 30 : 198 + answer * 20, height() - 105),
+                outline: { color: RED, width: 2 },
+                fill: false
+            })
+        }
       }
     });
 
@@ -128,6 +204,7 @@ scene("main", ()=> {
     })
 
     onUpdate("player", (e) => {
+        // Keep player from going off screen
         if (e.pos.x > width() - 30) {
             e.pos.x = width() - 30;
         }
@@ -140,17 +217,21 @@ scene("main", ()=> {
         if (e.pos.y < 30) {
             e.pos.y = 30;
         }
+
+        // Shield activation and regeneration
         if (player.shield_up) {
             if (player.shields <= 0) {
                 player.shield_up = false;
             }
             else {
-                player.shields -= 0.75;
+                player.shields -= 0.5;
             }
         }
         else if (player.shields < 100) {
             player.shields += 0.05;
         }
+
+        // Extra life
         if (score >= player.points_to_extra_life) {
             player.lives++;
             player.points_to_extra_life += 1000;
@@ -158,6 +239,7 @@ scene("main", ()=> {
     });
 
     onDraw("player", (p) => {
+        // Draw shield
         if (p.shield_up || p.invulnerable) {
             drawCircle({
                 pos: vec2(0, 0),
@@ -168,52 +250,18 @@ scene("main", ()=> {
         }
     })
 
-    // SHOOT CONTROLS + MECHANICS
+    // PLAYER SHOOT CONTROLS + MECHANICS
     onKeyDown("space", () => {
-      if (!bossMode && player.can_shoot) {
-        add([
-            sprite("bullet"),
-            // Starting from center of the ship, add half the width in the direction given by angle
-            pos(player.pos.add(vec2(player.width/2, 0))),
-            origin("center"),
-            area(),
-            "bullet",
-            "playerbullet",
-            "mobile",
-            {
-                speed_x: BULLET_SPEED,
-                speed_y: 0
-            }
-        ]);
-        play("laser");
-        player.can_shoot = false;
-        wait(player.laser_cooldown, () => {
-            player.can_shoot = true;
-        });
-      }
-    });
-
-    onUpdate("bullet", (e) => {
-        if (e.pos.x > width() || e.pos.x < 0) {
-            destroy(e);
-        }
-    });
-
-    onUpdate("fireball", (e) => {
-        if (e.pos.y < 0 || e.pos.y > height() || e.pos.x < 0) {
-            destroy(e);
-        }
-    }); 
-
-    function shootBoss(answer) {
-        if (bossMode && player.can_shoot) {
-            console.log("Shooting with answer", answer);
+      if (player.can_shoot) {
+        if (bossMode && answer !== null) {
+            // Shoot boss!
+            console.log("Answer is", answer);
             add([
                 rect(8, 8),
                 // Starting from center of the ship, add half the width in the direction given by angle
                 pos(player.pos.add(vec2(player.width/2, 0))),
                 origin("center"),
-                COLORS[answer],
+                color(Color.fromArray(BULLET_COLORS[answer])),
                 area(),
                 "bullet",
                 "numberbullet",
@@ -224,47 +272,89 @@ scene("main", ()=> {
                     answer: answer
                 }
             ]);
-            play("laser");
-            player.can_shoot = false;
-            wait(player.laser_cooldown, () => {
-                player.can_shoot = true;
-            });
         }
-    }
+        else if (!bossMode) {
+            // shoot regular enemy
+            add([
+                sprite("bullet"),
+                pos(player.pos.add(vec2(player.width/2, 0))),
+                origin("center"),
+                area(),
+                "bullet",
+                "playerbullet",
+                "mobile",
+                {
+                    speed_x: BULLET_SPEED,
+                    speed_y: 0
+                }
+            ]);
+        }
+        else {
+            return; // if boss mode and answer not selected, do nothing
+        }
+        play("laser");
+        player.can_shoot = false;
+        wait(player.laser_cooldown, () => {
+            player.can_shoot = true;
+        });
+      }
+    });
+
+    onUpdate("bullet", (e) => {
+        if (e.pos.x > width() || e.pos.x < 0) {
+            destroy(e);  // Destroy bullet that goes off screen
+        }
+    });
+
+    onUpdate("fireball", (e) => {
+        if (e.pos.y < 0 || e.pos.y > height() || e.pos.x < 0) {
+            destroy(e); // Destroy fireball that goes off screen
+        }
+    }); 
 
     onKeyDown("0", () => {
-        shootBoss(0);
+        answer = 0; 
     })
     onKeyDown("1", () => {
-        shootBoss(1);
+        answer = neg_answer ? -1 : 1;
     })
     onKeyDown("2", () => {
-        shootBoss(2);
+        answer = neg_answer ? -2 : 2;
     })
     onKeyDown("3", () => {
-        shootBoss(3);
+        answer = neg_answer ? -3 : 3;
     })
     onKeyDown("4", () => {
-        shootBoss(4);
+        answer = neg_answer ? -4 : 4;
     })
     onKeyDown("5", () => {
-        shootBoss(5);
+        answer = neg_answer ? -5 : 5;
     })
     onKeyDown("6", () => {
-        shootBoss(6);
+        answer = neg_answer ? -6 : 6;
     })
     onKeyDown("7", () => {
-        shootBoss(7);
+        answer = neg_answer ? -7 : 7;
     })
     onKeyDown("8", () => {
-        shootBoss(8);
+        answer = neg_answer ? -8 : 8;
     })
     onKeyDown("9", () => {
-        shootBoss(9);
+        answer = neg_answer ? -9 : 9;
+    })
+    onKeyDown("-", () => {
+        // Set neg_answer = true only if level includes negative solutions
+        if (LEVEL_INFO[level]['minSolution'] < 0) {
+            neg_answer = true;
+            wait(1, () => {
+                neg_answer = false;
+            });
+        }
     })
 
+    // Add wall for player to hide behind while solving equation.
     function addWall() {
-        minibossWall = add([
+        bossWall = add([
             rect(20, 100),
             pos(100, height() - 50),
             origin("center"),
@@ -278,11 +368,13 @@ scene("main", ()=> {
     // BOSS SHIPS
 
     function generateEquation(solution) {
-        let coeff = randi(-2, 4);
-        if (coeff == 0) {
-            coeff = -3;
+        const maxCoeff = LEVEL_INFO[level]['maxCoeff'];
+        const minCoeff = LEVEL_INFO[level]['minCoeff'];
+        let coeff = randi(minCoeff, maxCoeff + 1); // coefficient of X
+        while (coeff == 0) {
+            coeff = randi(minCoeff, maxCoeff + 1);
         }
-        let addend = randi(-9, 9);
+        let addend = randi(-9, 9); // Second term on the side with the X
         if (addend == 0) {
             addend = 9;
         }
@@ -297,9 +389,15 @@ scene("main", ()=> {
 
 
     function spawnBossShip(yPos) {
-        const solution = randi(0, 10);
+        // Choose solution and generate equation
+        const maxSolution = LEVEL_INFO[level]['maxSolution'];
+        const minSolution = LEVEL_INFO[level]['minSolution'];
+        console.log("Max solution", maxSolution, "min solution", minSolution)
+        const solution = randi(minSolution, maxSolution + 1);
+        console.log("Solution", solution);
         const eqn = generateEquation(solution);
-        const speedY = rand(-80, 80);
+        console.log(eqn);
+        const speedY = rand(-MAX_BOSS_SPEED_Y, MAX_BOSS_SPEED_Y);  // random vertical speed (bosses don't move horizontally)
         add([
             sprite("command-ship"),
             pos(width() - 200, yPos),
@@ -318,6 +416,7 @@ scene("main", ()=> {
               move_timer: 0
             }
         ]);
+        // Text for the equation, moves with the boss ship
         bossText = add([
             text(eqn, {size: 24}),
             pos(width() - 200, yPos),
@@ -330,10 +429,11 @@ scene("main", ()=> {
         ]);
     }
 
-
     // ENEMIES
 
     function spawnEnemy(yPos) {
+        const minSpeed = LEVEL_INFO[level]['minEnemySpeed'];
+        const maxSpeed = LEVEL_INFO[level]['maxEnemySpeed'];
         add([
             sprite("enemy"),
             pos(width() - 100, yPos),
@@ -345,21 +445,22 @@ scene("main", ()=> {
             "killsplayer",
             "mobile",
             {
-              speed_x: rand(-75, -150),
+              speed_x: rand(-minSpeed, -maxSpeed),
               speed_y: rand(-30, 30),
               shot_timer: 0
             }
         ]);
-        enemiesOnScreen++;
+        numEnemiesOnScreen++;
     }
-    for (let i = 0; i < NUM_ENEMIES; i++) {
+    for (let i = 0; i < LEVEL_INFO[level]['numEnemies']; i++) {
         spawnEnemy(i*125 + 100);
     }
 
+    // Change boss y direction every 5 seconds.
     onUpdate("boss", (b) => {
         b.move_timer += dt()
         if (b.move_timer >= 5) {
-            b.speed_y = rand(-80, 80);
+            b.speed_y = rand(-MAX_BOSS_SPEED_Y, MAX_BOSS_SPEED_Y);
             bossText.speed_y = b.speed_y;
             b.move_timer = 0;
         }
@@ -367,17 +468,19 @@ scene("main", ()=> {
 
     onUpdate("enemy", (e) => {
         if (e.pos.y > height() - 30 || e.pos.y < 30) {
+            // Stop enemy from going off screen vertically
             e.speed_y = -e.speed_y;
             if (bossMode) {
-                bossText.speed_y = e.speed_y;
+                bossText.speed_y = e.speed_y; // boss text must move with boss
             }
         }
         if (e.pos.x < 0) {
             console.log("Destroying enemy who went off screen")
             destroy(e)
         }
+        // Enemies shoot every 2 seconds (1 second for later levels)
         e.shot_timer += dt()
-        if (e.shot_timer >= 2) {
+        if (e.shot_timer >= LEVEL_INFO[level]['enemyReload']) {
             e.shot_timer = 0;
             add([
                 rect(8, 8),
@@ -389,38 +492,38 @@ scene("main", ()=> {
                 "killsplayer",
                 "mobile",
                 {
-                  speed_x: -BULLET_SPEED,
+                  speed_x: -LEVEL_INFO[level]['enemyBulletSpeed'],
                   speed_y: 0
                 }
             ]);
         }
     })
 
+    // If two enemies collide, have them both reverse direction
     onCollide("enemy", "enemy", (e1, e2) => {
         console.log("Enemy collision!", e1.pos, e2.pos)
         if (e1.pos.y > e2.pos.y) {
-            // e1.pos.y += Math.abs(e1.speed_y);
-            // e2.pos.y -= Math.abs(e2.speed_y);
             e1.speed_y = Math.abs(e1.speed_y)
             e2.speed_y = -Math.abs(e2.speed_y)
         }
         else {
-            // e1.pos.y -= Math.abs(e1.speed_y);
-            // e2.pos.y += Math.abs(e2.speed_y);
             e1.speed_y = -Math.abs(e1.speed_y)
             e2.speed_y = Math.abs(e2.speed_y)
         }
     });
 
     player.onCollide("killsplayer", (k) => {
+        // Player death. Fireballs ignore shields.
         if (!player.invulnerable && (k.ignores_shield || !player.shield_up)) {
             play("explosion2");
             player.lives--;
+            player.shields = 100;
             destroy(k)
             if (player.lives < 0) {
-                destroy(player)
+                destroy(player) // game over
             }
             else {
+                // respawn player, make player invulnerable for 3 sec
                 player.invulnerable = true;
                 player.pos.x = 160;
                 player.pos.y = 120;
@@ -434,9 +537,10 @@ scene("main", ()=> {
     });
 
     onCollide("playerbullet", "normalenemy", (b, e) => {
+        // Destroy regular enemy ships
         destroy(b);
         destroy(e);
-        enemiesKilled++;
+        numEnemiesKilled++;
         score += 10;
         play("explosion");
     });
@@ -447,29 +551,42 @@ scene("main", ()=> {
         console.log(boss.solution);
         destroy(bullet);
         if (bullet.answer === boss.solution) {
+            // Boss killed!
+            answer = null;
             destroy(boss);
             destroy(bossText);
             play("explosion");
             score += 100;
             numBossesKilled++;
-            if (numBossesKilled >= 3) {
-                for (let i = 0; i < NUM_ENEMIES; i++) {
+
+            if (numBossesKilled >= LEVEL_INFO[level]['bossesToKill']) {
+                // All bosses killed, exit boss mode, spawn new regular enemies, level up
+                for (let i = 0; i < LEVEL_INFO[level]['numEnemies']; i++) {
                     spawnEnemy(i*125 + 100);
                 }
                 numBossesKilled = 0;
-                destroy(minibossWall);
-                minibossWall = null;
+                destroy(bossWall);
+                bossWall = null;
                 bossMode = false;
+                if (TESTING || levelCounter > 0) {
+                    levelCounter = 0;
+                    if (level < 10) {
+                        level++;
+                    }
+                }
+                else {
+                    levelCounter++;
+                }
             }
             else {
                 spawnBossShip(rand(100, height() - 200))
             }
         }
         else {
+            // Wrong answer. Shoot 3 fireballs
             for (let dy of [-200, 0, 200]) {
                 add([
                     sprite("fireball"),
-                    // Starting from center of the ship, add half the width in the direction given by angle
                     pos(boss.pos.add(vec2(-boss.width/2, 0))),
                     origin("center"),
                     area(),
@@ -487,17 +604,19 @@ scene("main", ()=> {
     });
 
     onCollide("enemybullet", "wall", (e, w) => {
-        destroy(e)
+        destroy(e); // wall blocks enemy bullets 
     })
 
     on("destroy", "normalenemy", (e) => {
-        enemiesOnScreen--;
-        console.log("Enemies Killed", enemiesKilled);
-        if (enemiesKilled < 10) {
+        numEnemiesOnScreen--;
+        console.log("Enemies Killed", numEnemiesKilled);
+        if (numEnemiesKilled < LEVEL_INFO[level]['enemiesToKill']) {
             spawnEnemy(rand(100, height() - 100));
         }
-        else if (enemiesOnScreen === 0) {
-            enemiesKilled = 0;
+        else if (numEnemiesOnScreen === 0) {
+            // Boss mode!
+            console.log("Boss Mode");
+            numEnemiesKilled = 0;
             addWall();
             spawnBossShip(rand(100, height() - 200));
             bossMode = true;
@@ -509,7 +628,7 @@ scene("main", ()=> {
         e.move(vec2(e.speed_x, e.speed_y));
     });
 
-      // GAME OVER MECHANICS
+    // GAME OVER MECHANICS
     player.on("destroy", () => {
         add([
         text(`GAME OVER\n\nScore: ${score}\n\n[R]estart?\n\n[Q]uit?`, { size: 20}),
