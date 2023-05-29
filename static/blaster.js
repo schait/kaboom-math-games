@@ -20,10 +20,10 @@ loadSound("laser", "/static/sounds/laser.wav");
 loadSound("explosion", "/static/sounds/explosion.wav");
 loadSound("explosion2", "/static/sounds/implosion.wav");
 
-scene("main", ()=> {
+scene("main", (startLevel) => {
 
     let score = 0;
-    let level = 1;
+    let level = startLevel;
     let levelCounter = 0;
     let numEnemiesKilled = 0;
     let gameOver = false;
@@ -32,13 +32,12 @@ scene("main", ()=> {
     let bossMode = false;
     let answer = null;
     let neg_answer = false;
-    let bossText = null;
     let numBossesKilled = 0;
 
     const BULLET_COLORS = {
         0: [255, 255, 255], // white
         1: [180, 180, 180], // light gray
-        "-1": [80, 80, 80], // dark gray
+        "-1": [100, 100, 100], // dark gray
         2: [255, 0, 0], // red
         "-2": [153, 0, 0], // dark red
         3: [255, 165, 0],  // orange
@@ -49,8 +48,8 @@ scene("main", ()=> {
         "-5": [0, 127, 0],  // dark green
         6: [0, 255, 255], // cyan
         "-6": [0, 128, 128],  // teal
-        7: [30, 30, 255],  // blue
-        "-7": [20, 20, 180], // dark blue
+        7: [60, 120, 255],  // light blue
+        "-7": [20, 20, 200], // dark blue
         8: [220, 0, 255], // light purple
         "-8": [128, 0, 128], // dark purple
         9: [255, 105, 180], // pink
@@ -356,7 +355,7 @@ scene("main", ()=> {
     function addWall() {
         bossWall = add([
             rect(20, 100),
-            pos(100, height() - 50),
+            pos(125, height() - 50),
             origin("center"),
             area(),
             solid(),
@@ -398,7 +397,8 @@ scene("main", ()=> {
         const eqn = generateEquation(solution);
         console.log(eqn);
         const speedY = rand(-MAX_BOSS_SPEED_Y, MAX_BOSS_SPEED_Y);  // random vertical speed (bosses don't move horizontally)
-        add([
+        // Text for the equation, moves with the boss ship
+        const boss = add([
             sprite("command-ship"),
             pos(width() - 200, yPos),
             origin("center"),
@@ -413,11 +413,12 @@ scene("main", ()=> {
               solution: solution,
               speed_x: 0,
               speed_y: speedY,
-              move_timer: 0
+              move_timer: 0,
+              text: null,
+              is_boss: true
             }
         ]);
-        // Text for the equation, moves with the boss ship
-        bossText = add([
+        const bossText = add([
             text(eqn, {size: 24}),
             pos(width() - 200, yPos),
             origin("center"),
@@ -427,6 +428,7 @@ scene("main", ()=> {
               speed_y: speedY,
             }
         ]);
+        boss.text = bossText;
     }
 
     // ENEMIES
@@ -452,26 +454,28 @@ scene("main", ()=> {
         ]);
         numEnemiesOnScreen++;
     }
-    for (let i = 0; i < LEVEL_INFO[level]['numEnemies']; i++) {
-        spawnEnemy(i*125 + 100);
-    }
 
-    // Change boss y direction every 5 seconds.
-    onUpdate("boss", (b) => {
-        b.move_timer += dt()
-        if (b.move_timer >= 5) {
-            b.speed_y = rand(-MAX_BOSS_SPEED_Y, MAX_BOSS_SPEED_Y);
-            bossText.speed_y = b.speed_y;
-            b.move_timer = 0;
+    function spawnEnemies() {
+        const numEnemiesToSpawn = LEVEL_INFO[level]['numEnemies'];
+        if (numEnemiesToSpawn == 5) {
+            for (let i = 0; i < numEnemiesToSpawn; i++) {
+                spawnEnemy(i*110 + 75);
+            }
         }
-    })
-
+        else {
+            for (let i = 0; i < numEnemiesToSpawn; i++) {
+                spawnEnemy(i*125 + 100);
+            }
+        }
+    }
+    spawnEnemies();
+    
     onUpdate("enemy", (e) => {
         if (e.pos.y > height() - 30 || e.pos.y < 30) {
             // Stop enemy from going off screen vertically
             e.speed_y = -e.speed_y;
             if (bossMode) {
-                bossText.speed_y = e.speed_y; // boss text must move with boss
+                e.text.speed_y = e.speed_y; // boss text must move with boss
             }
         }
         if (e.pos.x < 0) {
@@ -512,13 +516,26 @@ scene("main", ()=> {
         }
     });
 
+    // Change boss y direction every 5 seconds.
+    onUpdate("boss", (b) => {
+        b.move_timer += dt()
+        if (b.move_timer >= 5) {
+            b.speed_y = rand(-MAX_BOSS_SPEED_Y, MAX_BOSS_SPEED_Y);
+            b.move_timer = 0;
+        }
+        b.text.speed_y = b.speed_y;
+        b.text.pos.y = b.pos.y;
+    });
+
     player.onCollide("killsplayer", (k) => {
         // Player death. Fireballs ignore shields.
         if (!player.invulnerable && (k.ignores_shield || !player.shield_up)) {
             play("explosion2");
             player.lives--;
             player.shields = 100;
-            destroy(k)
+            if (!k.is_boss) {
+                destroy(k);
+            }
             if (player.lives < 0) {
                 destroy(player) // game over
             }
@@ -550,20 +567,20 @@ scene("main", ()=> {
         console.log(bullet.answer);
         console.log(boss.solution);
         destroy(bullet);
+        const bossesToKill = LEVEL_INFO[level]['bossesToKill'];
+        const numBossesOnScreen = LEVEL_INFO[level]['numBosses'];
         if (bullet.answer === boss.solution) {
             // Boss killed!
             answer = null;
+            destroy(boss.text)
             destroy(boss);
-            destroy(bossText);
             play("explosion");
             score += 100;
             numBossesKilled++;
 
-            if (numBossesKilled >= LEVEL_INFO[level]['bossesToKill']) {
+            if (numBossesKilled >= bossesToKill) {
                 // All bosses killed, exit boss mode, spawn new regular enemies, level up
-                for (let i = 0; i < LEVEL_INFO[level]['numEnemies']; i++) {
-                    spawnEnemy(i*125 + 100);
-                }
+                spawnEnemies();
                 numBossesKilled = 0;
                 destroy(bossWall);
                 bossWall = null;
@@ -578,8 +595,21 @@ scene("main", ()=> {
                     levelCounter++;
                 }
             }
+            else if (numBossesOnScreen === 2 && numBossesKilled == bossesToKill - 1) {
+                console.log("Killed second to last boss!");  // Do nothing!
+            }
             else {
-                spawnBossShip(rand(100, height() - 200))
+                // Wait 1.5 sec before spawning next boss so that any bullets can leave
+                wait(1.5, () => {
+                    if (numBossesOnScreen === 1) {
+                        spawnBossShip(rand(100, height() - 200))
+                    }
+                    else {
+                        spawnBossShip(
+                            rand(Math.max(100, boss.pos.y - 100), 
+                            Math.min(height() - 100, boss.pos.y + 100)))
+                    }
+                })
             }
         }
         else {
@@ -618,7 +648,14 @@ scene("main", ()=> {
             console.log("Boss Mode");
             numEnemiesKilled = 0;
             addWall();
-            spawnBossShip(rand(100, height() - 200));
+            console.log("Started boss mode. Num bosses", LEVEL_INFO[level]['numBosses'])
+            if (LEVEL_INFO[level]['numBosses'] === 2) {
+                spawnBossShip(rand(50, height() / 2 - 50));
+                spawnBossShip(rand(height() / 2 + 50, height() - 100));
+            }
+            else {
+                spawnBossShip(rand(100, height() - 200));
+            }
             bossMode = true;
         }
     });
@@ -639,7 +676,7 @@ scene("main", ()=> {
 
     onKeyPress("r", () => {
         if (gameOver) {
-            go("main");
+            go("instructions");
         }
     });
 
@@ -654,15 +691,28 @@ scene("main", ()=> {
 
 scene("instructions", () => {
     let pointer = false;
+    const startLevelInput = document.createElement("input");
+    startLevelInput.setAttribute("type", "text");
+    document.body.appendChild(startLevelInput);
+    startLevelInput.classList.add("startLevel");
+    startLevelInput.value = "1";
+    startLevelInput.style.top = height()/2 + 30 + "px";
+    startLevelInput.style.left = width()/2 - 15 + "px";
     add([
-        text("Press Space to shoot.\n\nPress S to activate shield.", {size: 32}),
-        pos(width()/2, height()/2 - 50),
+        text("Press Space to shoot.\nPress S to activate shield.", {size: 32}),
+        pos(width()/2, height()/2 - 100),
+        origin("center"),
+    ]);
+    add([
+        text("Select Starting Level (1-10):", {size: 32}),
+        pos(width()/2, height()/2),
         origin("center"),
     ]);
     let play = add([
         rect(150, 100),
-        pos(width()/2, height()/2 + 100),
+        pos(width()/2 + 5, height()/2 + 120),
         text(" PLAY ", {size: 32, transform: () => ({color: BLACK})}),
+        color(YELLOW),
         origin("center"),
         area(),
         "button"
@@ -670,7 +720,18 @@ scene("instructions", () => {
     onHover("button", (c) => {
         pointer = true;
     })
-    play.onClick(() => go("main"));
+    play.onClick(() => {
+        const startLevel = Number(startLevelInput.value);
+        console.log("Starting Level", startLevel);
+        if (isNaN(startLevel) || startLevel < 1 || startLevel > 10) {
+            alert("Invalid starting level!")
+            startLevelInput.value="1";
+        }
+        else {
+            startLevelInput.remove();
+            go("main", startLevel);
+        }
+    });
     onDraw(() => {
         if (pointer) {
             cursor("pointer");

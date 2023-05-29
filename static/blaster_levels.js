@@ -80,7 +80,7 @@ const LEVEL_INFO = {
         enemyReload: 2,
         enemiesToKill: 10,
         bossesToKill: 4,
-        numEnemies: 4,
+        numEnemies: 5,
         numBosses: 1
     },
     7: {
@@ -94,7 +94,7 @@ const LEVEL_INFO = {
         enemyReload: 2,
         enemiesToKill: 10,
         bossesToKill: 5,
-        numEnemies: 4,
+        numEnemies: 5,
         numBosses: 2
     },
     8: {
@@ -108,7 +108,7 @@ const LEVEL_INFO = {
         enemyReload: 2,
         enemiesToKill: 10,
         bossesToKill: 6,
-        numEnemies: 4,
+        numEnemies: 5,
         numBosses: 2
     },
     9: {
@@ -119,10 +119,10 @@ const LEVEL_INFO = {
         maxEnemySpeed: 350,
         minEnemySpeed: 100,
         enemyBulletSpeed: 500,
-        enemyReload: 1,
+        enemyReload: 1.5,
         enemiesToKill: 15,
         bossesToKill: 6,
-        numEnemies: 4,
+        numEnemies: 5,
         numBosses: 2
     },
     10: {
