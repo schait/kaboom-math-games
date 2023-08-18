@@ -21,6 +21,12 @@ def balance_game():
 
     return render_template('balance.html')
 
+@app.route('/blaster-instructions')
+def blaster_instructions():
+    """Instructions for Blaster game."""
+
+    return render_template('blaster_instructions.html')
+
 @app.route('/blaster')
 def blaster_game():
     """Equation Blaster game."""
